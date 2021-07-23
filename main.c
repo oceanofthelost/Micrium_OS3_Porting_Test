@@ -1,7 +1,6 @@
 /**
 network libarary hasn't been tried.
 If you use OS without network, delete remove Network folder,in this case STM32F4xx unnecessary ,remove it.
-
 **/
 
 #include "stm32f4xx.h"                  // Device header
@@ -23,7 +22,7 @@ If you use OS without network, delete remove Network folder,in this case STM32F4
 #include "net_dev_gmac.h"
 #include "lib_math.h"
 
-#define	BTN_PRESSED   0x01U
+#define BTN_PRESSED   0x01U
 
 void SystemClock_Config(void);
 void NVICs_init(void);
@@ -42,143 +41,183 @@ OS_SEM  sem;
 
 int main()
 {
-	LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SYSCFG);
-  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
-	
-	NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
-	
-	SystemClock_Config();
-	SysTick_Config(SystemCoreClock / 1000);
-	
-	
-	MX_GPIO_Init();
+    NET_ERR err_net;
 
-	CPU_Init();                                                 /* Initialize the uC/CPU services                       */
-  Mem_Init();                                                 /* Initialize Memory Mmanagment Module                  */
-  Math_Init(); 
-	
-	OSInit(&osErr);
-	
-	OSTaskCreate( &ledCtrlTaskTCB,
-								"Led Task",
-								ledTask,
-								(void*)0,
-								1,
-								ledCtrlTaskSTK,
-								0,
-								128U,
-								0,
-								0,
-								0,
-								OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR,
-								&osErr
-							);
-								
-	OSSemCreate(&sem,
-              "Button Semaphore",
-              0,
-              &osErr);
-	
-		OSStart(&osErr);
-		
-	  NET_IF_NBR      if_nbr;
+    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SYSCFG);
+    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
+    
+    NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+    
+    SystemClock_Config();
+    SysTick_Config(SystemCoreClock / 1000);
+    
+    
+    MX_GPIO_Init();
+
+    CPU_Init();                                                 /* Initialize the uC/CPU services                       */
+    Mem_Init();                                                 /* Initialize Memory Mmanagment Module                  */
+    Math_Init(); 
+    
+    OSInit(&osErr);
+    
+    /* Create main task that init all other tasks */
+    OSTaskCreate(   &ledCtrlTaskTCB,
+                    "Led Task",
+                    ledTask,
+                    (void*)0,
+                    1,
+                    ledCtrlTaskSTK,
+                    0,
+                    128U,
+                    0,
+                    0,
+                    0,
+                    OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR,
+                    &osErr
+        );
+
+    /* Create  semaphores */
+    OSSemCreate(&sem,
+      "Button Semaphore",
+      0,
+      &osErr);
+    
+    /* Init network interface */
+    err_net = Init_Network();
+
+    if(err_net != NET_IPv4_ERR_NONE)
+    {
+        while(1)
+        {
+
+        }
+    }
+    /* OSStart never returns. If it does system has failed and is a critical error */
+    OSStart(&osErr);
+
+                                                /* Code here only executes if OSStart returns */
+                                                /* Check osERR for reason on why system returned */
+    while(DEF_ON){                              /* Should Never Get Here                                */
+    };
+
+}
+
+NET_ERR Init_Network(void)
+{
+
+    NET_IF_NBR      if_nbr;
     NET_ERR         err_net;
-		NET_IPv4_ADDR   addr_ipv4;
+    NET_IPv4_ADDR   addr_ipv4;
     NET_IPv4_ADDR   msk_ipv4;
     NET_IPv4_ADDR   gateway_ipv4;
-		
-		err_net = Net_Init(&NetRxTaskCfg,                   /* See Note #6.                               */
+
+    err_net = Net_Init(&NetRxTaskCfg,                   /* See Note #6.                               */
                        &NetTxDeallocTaskCfg,
-                       &NetTmrTaskCfg);
-											 
+                        &NetTmrTaskCfg
+                      );
+
     if (err_net != NET_ERR_NONE) 
-		{
-			//todo:
+    {
+        return err_net;
     }
-		
-		                                                    /* --------- ADD ETHERNET INTERFACE --------- */
-                                                        /* See Note #7.                               */
+        
+                                                                /* --------- ADD ETHERNET INTERFACE --------- */
+                                                                /* See Note #7.                               */
     if_nbr = NetIF_Add((void *)&NetIF_API_Ether,                /* See Note #7b.                              */
-                       (void *)&NetDev_API_GMAC,    /* Device driver API,    See Note #7c.        */
-                       (void *)&NetDev_BSP_STM32F4xx,        /* BSP API,              See Note #7d.        */
+                       (void *)&NetDev_API_GMAC,                /* Device driver API,    See Note #7c.        */
+                       (void *)&NetDev_BSP_STM32F4xx,           /* BSP API,              See Note #7d.        */
                        (void *)&NetDev_Cfg_Ether_1,             /* Device configuration, See Note #7e.        */
                        (void *)&NetPhy_API_Generic,             /* PHY driver API,       See Note #7f.        */
                        (void *)&NetPhy_Cfg_Ether_1,             /* PHY configuration,    See Note #7g.        */
-                       &err_net);
-											 
+                        &err_net);
+
     if (err_net != NET_IF_ERR_NONE) 
-	  {
-			   // todo:
+    {
+        return err_net;
     }
-		
-		                                                    /* -------- START ETHERNET INTERFACE -------- */
+
+                                                        /* -------- START ETHERNET INTERFACE -------- */
     NetIF_Start(if_nbr, &err_net);                      /* See Note #8.                               */
     if (err_net != NET_IF_ERR_NONE) {
-			//todo:
-		}
-			
-			                                                    /* ------- CONFIGURE IPV4 STATIC ADDR ------- */
+        return err_net;
+    }
+
+                                                        /* ------- CONFIGURE IPV4 STATIC ADDR ------- */
                                                         /* See Note #9                                */
-    NetASCII_Str_to_IP("192.168.1.36",                   /* Convert IPv4 string addr to 32 bits addr.  */
-                       &addr_ipv4,
-                       NET_IPv4_ADDR_SIZE,
-                      &err_net);
-    NetASCII_Str_to_IP("255.255.255.0",                 /* Convert IPv4 mask string to 32 bits addr.  */
-                       &msk_ipv4,
-                       NET_IPv4_ADDR_SIZE,
-                      &err_net);
-    NetASCII_Str_to_IP("192.168.1.1",                    /* Convert Gateway string to 32 bits addr.    */
-                       &gateway_ipv4,
-                       NET_IPv4_ADDR_SIZE,
-                      &err_net);
-    NetIPv4_CfgAddrAdd(if_nbr,                          /* Add a statically-configured IPv4 host ...  */
-                       addr_ipv4,                       /* ... addr, subnet mask, & default      ...  */
-                       msk_ipv4,                        /* ... gateway to the interface. See Note #10.*/
-                       gateway_ipv4,
-                      &err_net);
-											
+    NetASCII_Str_to_IP( "192.168.1.36",                /* Convert IPv4 string addr to 32 bits addr.  */
+                        &addr_ipv4,
+                        NET_IPv4_ADDR_SIZE,
+                        &err_net);
     if (err_net != NET_IPv4_ERR_NONE) 
-			{
-        //todo:
-      }
+    {
+        return err_net;
+    }
+    NetASCII_Str_to_IP( "255.255.255.0",                 /* Convert IPv4 mask string to 32 bits addr.  */
+                        &msk_ipv4,
+                        NET_IPv4_ADDR_SIZE,
+                        &err_net);
+    if (err_net != NET_IPv4_ERR_NONE) 
+    {
+        return err_net;
+    }
+    NetASCII_Str_to_IP( "192.168.1.1",                    /* Convert Gateway string to 32 bits addr.    */
+                        &gateway_ipv4,
+                        NET_IPv4_ADDR_SIZE,
+                        &err_net);
+    if (err_net != NET_IPv4_ERR_NONE) 
+    {
+        return err_net;
+    }
+    NetIPv4_CfgAddrAdd( if_nbr,                          /* Add a statically-configured IPv4 host ...  */
+                        addr_ipv4,                       /* ... addr, subnet mask, & default      ...  */
+                        msk_ipv4,                        /* ... gateway to the interface. See Note #10.*/
+                        gateway_ipv4,
+                        &err_net);
+
+    if (err_net != NET_IPv4_ERR_NONE) 
+    {
+        return err_net;
+    }
+
+    return NET_IPv4_ERR_NONE;
 }
 
 void btnPressed(void)
 {
-	OS_SEM_CTR  ctr;
-	OS_ERR    err;
+    OS_SEM_CTR  ctr;
+    OS_ERR    err;
 
-	ctr = OSSemPost(&sem,OS_OPT_POST_1 + OS_OPT_POST_NO_SCHED, &err);
-	(void)ctr;
+    ctr = OSSemPost(&sem,OS_OPT_POST_1 + OS_OPT_POST_NO_SCHED, &err);
+    (void)ctr;
 }
 
 void ledTask(void *p)
 {
-	(void)&p;
-	
-	OS_ERR      err;
-	OS_SEM_CTR  ctr;
-	CPU_TS      ts;
-	
-	while(DEF_ON)
-	{
-//		OSTimeDlyHMSM(0, 0, 0, 500, OS_OPT_TIME_HMSM_STRICT, &osErr);
-		
-		ctr = OSSemPend(&sem,
-                    0,
-                    OS_OPT_PEND_BLOCKING,
-                    &ts,
-                    &err);
-		(void)ctr;
+    (void)&p;
+    
+    OS_ERR      err;
+    OS_SEM_CTR  ctr;
+    CPU_TS      ts;
+    
+    while(DEF_ON)
+    {
+//      OSTimeDlyHMSM(0, 0, 0, 500, OS_OPT_TIME_HMSM_STRICT, &osErr);
 
-			LL_GPIO_TogglePin(GPIOD, LL_GPIO_PIN_14);
-		
+        ctr = OSSemPend(&sem,
+            0,
+            OS_OPT_PEND_BLOCKING,
+            &ts,
+            &err);
+        (void)ctr;
 
-		
-		diffTimeF = CPU_TS32_to_uSec(CPU_TS_Get32());
-		diffTimeE = CPU_TS32_to_uSec(CPU_TS_Get32());
-	  diffTimeRes = diffTimeE - diffTimeF;
-	}
+        LL_GPIO_TogglePin(GPIOD, LL_GPIO_PIN_14);
+        
+
+        
+        diffTimeF = CPU_TS32_to_uSec(CPU_TS_Get32());
+        diffTimeE = CPU_TS32_to_uSec(CPU_TS_Get32());
+        diffTimeRes = diffTimeE - diffTimeF;
+    }
 }
 
 
@@ -222,7 +261,7 @@ void SystemClock_Config(void)
 
 void NVICs_init(void)
 {
-   
+
 //   NVIC_ClearPendingIRQ(NonMaskableInt_IRQn);
 //   NVIC_EnableIRQ(NonMaskableInt_IRQn);
 //   
@@ -243,8 +282,8 @@ void NVICs_init(void)
 //   
 //   NVIC_ClearPendingIRQ(PendSV_IRQn);
 //   NVIC_EnableIRQ(PendSV_IRQn);
-	 
-	 NVIC_ClearPendingIRQ(SysTick_IRQn);
+
+   NVIC_ClearPendingIRQ(SysTick_IRQn);
    NVIC_SetPriority(SysTick_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),15, 0));
    NVIC_EnableIRQ(SysTick_IRQn);
 }
